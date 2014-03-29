@@ -23,7 +23,6 @@ import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.RamUsageEstimator;
-import org.elasticsearch.common.lease.Releasable;
 import org.elasticsearch.common.lease.Releasables;
 import org.elasticsearch.common.util.LongHash;
 import org.elasticsearch.index.fielddata.BytesValues;
@@ -67,22 +66,8 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
         return true;
     }
 
-    private void releaseGlobalOrdinals() {
-        if (globalOrdinals != null && globalOrdinals instanceof Releasable) {
-            Releasables.release((Releasable) globalOrdinals);
-        }
-        globalOrdinals = null;
-    }
-
-    @Override
-    protected void doRelease() {
-        releaseGlobalOrdinals();
-    }
-
     @Override
     public void setNextReader(AtomicReaderContext reader) {
-        releaseGlobalOrdinals();
-
         globalValues = valuesSource.globalBytesValues();
         globalOrdinals = globalValues.ordinals();
     }
@@ -171,13 +156,7 @@ public class GlobalOrdinalsStringTermsAggregator extends AbstractStringTermsAggr
 
         @Override
         protected void doRelease() {
-            boolean success = false;
-            try {
-                super.doRelease();
-                success = true;
-            } finally {
-                Releasables.release(success, bucketOrds);
-            }
+            Releasables.release(bucketOrds);
         }
 
     }
