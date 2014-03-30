@@ -29,6 +29,8 @@ import org.apache.lucene.util.packed.MonotonicAppendingLongBuffer;
 import org.apache.lucene.util.packed.PackedInts;
 import org.elasticsearch.ElasticsearchIllegalArgumentException;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.util.BigArrays;
+import org.elasticsearch.common.util.LongArray;
 import org.elasticsearch.index.AbstractIndexComponent;
 import org.elasticsearch.index.Index;
 import org.elasticsearch.index.fielddata.AtomicFieldData;
@@ -106,6 +108,10 @@ public class InternalGlobalOrdinalsBuilder extends AbstractIndexComponent implem
             return new CompressedOrdinalMappingBuilder(numSegments, acceptableOverheadRatio);
         } else if ("plain".equals(ordinalMappingType)) {
             return new PlainArrayOrdinalMappingBuilder(numSegments);
+        } else if ("packed".equals(ordinalMappingType)) {
+            return new PackedOrdinalMappingBuilder(numSegments, acceptableOverheadRatio);
+        } else if ("sliced".equals(ordinalMappingType)) {
+            return new SlicedArrayOrdinalMappingBuilder(numSegments);
         } else {
             throw new ElasticsearchIllegalArgumentException("Unsupported ordinal mapping type " + ordinalMappingType);
         }
@@ -150,6 +156,83 @@ public class InternalGlobalOrdinalsBuilder extends AbstractIndexComponent implem
             return memorySizeInBytesCounter;
         }
 
+    }
+
+    private class PackedOrdinalMappingBuilder implements OrdinalMappingBuilder {
+
+        final AppendingPackedLongBuffer[] segmentOrdToGlobalOrdLookups;
+        long memorySizeInBytesCounter;
+
+        private PackedOrdinalMappingBuilder(int numSegments, float acceptableOverheadRatio) {
+            segmentOrdToGlobalOrdLookups = new AppendingPackedLongBuffer[numSegments];
+            for (int i = 0; i < numSegments; i++) {
+                segmentOrdToGlobalOrdLookups[i] = new AppendingPackedLongBuffer(acceptableOverheadRatio);
+                segmentOrdToGlobalOrdLookups[i].add(0);
+            }
+        }
+
+        @Override
+        public void onOrdinal(int readerIndex, long globalOrdinal) {
+            segmentOrdToGlobalOrdLookups[readerIndex].add(globalOrdinal);
+        }
+
+        @Override
+        public LongValues[] build() {
+            for (AppendingPackedLongBuffer segmentOrdToGlobalOrdLookup : segmentOrdToGlobalOrdLookups) {
+                segmentOrdToGlobalOrdLookup.freeze();
+                memorySizeInBytesCounter += segmentOrdToGlobalOrdLookup.ramBytesUsed();
+            }
+            return segmentOrdToGlobalOrdLookups;
+        }
+
+        @Override
+        public long getMemorySizeInBytes() {
+            return memorySizeInBytesCounter;
+        }
+    }
+
+    private class SlicedArrayOrdinalMappingBuilder implements OrdinalMappingBuilder {
+
+        final LongArray[] segmentOrdToGlobalOrdLookups;
+        final long[] segmentOrdToGlobalOrdLookupsCounter;
+        long memorySizeInBytesCounter;
+
+        private SlicedArrayOrdinalMappingBuilder(int numSegments) {
+            segmentOrdToGlobalOrdLookups = new LongArray[numSegments];
+            segmentOrdToGlobalOrdLookupsCounter = new long[numSegments];
+            for (int i = 0; i < numSegments; i++) {
+                segmentOrdToGlobalOrdLookups[i] = BigArrays.NON_RECYCLING_INSTANCE.newLongArray(32, false);
+                segmentOrdToGlobalOrdLookupsCounter[i] = 1;
+            }
+        }
+
+        @Override
+        public void onOrdinal(int readerIndex, long globalOrdinal) {
+            segmentOrdToGlobalOrdLookups[readerIndex] = BigArrays.NON_RECYCLING_INSTANCE.grow(segmentOrdToGlobalOrdLookups[readerIndex], segmentOrdToGlobalOrdLookupsCounter[readerIndex] + 1);
+            segmentOrdToGlobalOrdLookups[readerIndex].set(segmentOrdToGlobalOrdLookupsCounter[readerIndex]++, globalOrdinal);
+        }
+
+        @Override
+        public LongValues[] build() {
+            LongValues[] result = new LongValues[segmentOrdToGlobalOrdLookupsCounter.length];
+            for (int i = 0; i < segmentOrdToGlobalOrdLookups.length; i++) {
+                final LongArray segmentOrdToGlobalOrdLookup = segmentOrdToGlobalOrdLookups[i];
+                result[i] = new LongValues() {
+                    @Override
+                    public long get(long index) {
+                        return segmentOrdToGlobalOrdLookup.get(index);
+                    }
+                };
+                // no access to AbstractBigArray#sizeInBytes()
+                memorySizeInBytesCounter += (segmentOrdToGlobalOrdLookup.size() * RamUsageEstimator.NUM_BYTES_LONG) + RamUsageEstimator.NUM_BYTES_ARRAY_HEADER;
+            }
+            return result;
+        }
+
+        @Override
+        public long getMemorySizeInBytes() {
+            return memorySizeInBytesCounter;
+        }
     }
 
     private class PlainArrayOrdinalMappingBuilder implements OrdinalMappingBuilder {
