@@ -25,6 +25,7 @@ import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.util.*;
 import org.apache.lucene.util.packed.AppendingPackedLongBuffer;
+import org.apache.lucene.util.packed.GrowableWriter;
 import org.apache.lucene.util.packed.MonotonicAppendingLongBuffer;
 import org.apache.lucene.util.packed.PackedInts;
 import org.elasticsearch.ElasticsearchIllegalArgumentException;
@@ -108,10 +109,12 @@ public class InternalGlobalOrdinalsBuilder extends AbstractIndexComponent implem
             return new CompressedOrdinalMappingBuilder(numSegments, acceptableOverheadRatio);
         } else if ("plain".equals(ordinalMappingType)) {
             return new PlainArrayOrdinalMappingBuilder(numSegments);
-        } else if ("packed".equals(ordinalMappingType)) {
-            return new PackedOrdinalMappingBuilder(numSegments, acceptableOverheadRatio);
+        } else if ("packed_long".equals(ordinalMappingType)) {
+            return new PackedLongOrdinalMappingBuilder(numSegments, acceptableOverheadRatio);
         } else if ("sliced".equals(ordinalMappingType)) {
             return new SlicedArrayOrdinalMappingBuilder(numSegments);
+        } else if ("packed_int".equals(ordinalMappingType)) {
+            return new PackedIntOrdinalMappingBuilder(numSegments, acceptableOverheadRatio);
         } else {
             throw new ElasticsearchIllegalArgumentException("Unsupported ordinal mapping type " + ordinalMappingType);
         }
@@ -158,12 +161,12 @@ public class InternalGlobalOrdinalsBuilder extends AbstractIndexComponent implem
 
     }
 
-    private class PackedOrdinalMappingBuilder implements OrdinalMappingBuilder {
+    private class PackedLongOrdinalMappingBuilder implements OrdinalMappingBuilder {
 
         final AppendingPackedLongBuffer[] segmentOrdToGlobalOrdLookups;
         long memorySizeInBytesCounter;
 
-        private PackedOrdinalMappingBuilder(int numSegments, float acceptableOverheadRatio) {
+        private PackedLongOrdinalMappingBuilder(int numSegments, float acceptableOverheadRatio) {
             segmentOrdToGlobalOrdLookups = new AppendingPackedLongBuffer[numSegments];
             for (int i = 0; i < numSegments; i++) {
                 segmentOrdToGlobalOrdLookups[i] = new AppendingPackedLongBuffer(acceptableOverheadRatio);
@@ -266,6 +269,51 @@ public class InternalGlobalOrdinalsBuilder extends AbstractIndexComponent implem
                     }
                 };
                 memorySizeInBytesCounter += (segmentOrdToGlobalOrdLookup.length * RamUsageEstimator.NUM_BYTES_LONG) + RamUsageEstimator.NUM_BYTES_ARRAY_HEADER;
+            }
+            return result;
+        }
+
+        public long getMemorySizeInBytes() {
+            return memorySizeInBytesCounter;
+        }
+
+    }
+
+    private class PackedIntOrdinalMappingBuilder implements OrdinalMappingBuilder {
+
+        final GrowableWriter[] segmentOrdToGlobalOrdLookups;
+        final int[] segmentOrdToGlobalOrdLookupsCounter;
+        long memorySizeInBytesCounter;
+
+        private PackedIntOrdinalMappingBuilder(int numSegments, float acceptableOverheadRatio) {
+            segmentOrdToGlobalOrdLookups = new GrowableWriter[numSegments];
+            segmentOrdToGlobalOrdLookupsCounter = new int[numSegments];
+            for (int i = 0; i < segmentOrdToGlobalOrdLookups.length; i++) {
+                segmentOrdToGlobalOrdLookups[i] = new GrowableWriter(1, 32, acceptableOverheadRatio);
+                segmentOrdToGlobalOrdLookupsCounter[i] = 1;
+            }
+        }
+
+        public void onOrdinal(int readerIndex, long globalOrdinal) {
+            if (segmentOrdToGlobalOrdLookups[readerIndex].size() < segmentOrdToGlobalOrdLookupsCounter[readerIndex] + 1) {
+                segmentOrdToGlobalOrdLookups[readerIndex] = segmentOrdToGlobalOrdLookups[readerIndex].resize(
+                        ArrayUtil.oversize(segmentOrdToGlobalOrdLookupsCounter[readerIndex] + 1, RamUsageEstimator.NUM_BYTES_LONG)
+                );
+            }
+            segmentOrdToGlobalOrdLookups[readerIndex].set(segmentOrdToGlobalOrdLookupsCounter[readerIndex]++, globalOrdinal);
+        }
+
+        public LongValues[] build() {
+            LongValues[] result = new LongValues[segmentOrdToGlobalOrdLookupsCounter.length];
+            for (int i = 0; i < segmentOrdToGlobalOrdLookups.length; i++) {
+                final PackedInts.Mutable segmentOrdToGlobalOrdLookup = segmentOrdToGlobalOrdLookups[i].getMutable();
+                result[i] = new LongValues() {
+                    @Override
+                    public long get(long index) {
+                        return segmentOrdToGlobalOrdLookup.get((int) index);
+                    }
+                };
+                memorySizeInBytesCounter += segmentOrdToGlobalOrdLookup.ramBytesUsed();
             }
             return result;
         }

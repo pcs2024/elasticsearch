@@ -150,7 +150,7 @@ public class GlobalOrdinalsBenchmark {
         System.out.println("--> Number of docs in index: " + COUNT);
 
         List<StatsResult> stats = new ArrayList<>();
-        String[] ordinalMappingTypes = new String[]{"plain", "sliced", "packed", "compressed"};
+        String[] ordinalMappingTypes = new String[]{"plain", "packed_int", "sliced", "packed_long", "compressed"};
         for (String ordinalMappingType : ordinalMappingTypes) {
             client.admin().indices().prepareClose(INDEX_NAME).get();
             client.admin().indices().prepareUpdateSettings(INDEX_NAME)
