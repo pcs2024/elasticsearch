@@ -84,7 +84,7 @@ public class GlobalOrdinalsBenchmark {
 
         try {
             client.admin().indices().prepareCreate("test")
-                    .addMapping("type", jsonBuilder().startObject().startObject("type")
+                    .addMapping(TYPE_NAME, jsonBuilder().startObject().startObject(TYPE_NAME)
                             .startArray("dynamic_templates")
                                 .startObject()
                                     .startObject("default")
@@ -152,11 +152,11 @@ public class GlobalOrdinalsBenchmark {
         List<StatsResult> stats = new ArrayList<>();
         String[] ordinalMappingTypes = new String[]{"plain", "sliced", "packed", "compressed"};
         for (String ordinalMappingType : ordinalMappingTypes) {
-            client.admin().indices().prepareClose("test").get();
-            client.admin().indices().prepareUpdateSettings("test")
+            client.admin().indices().prepareClose(INDEX_NAME).get();
+            client.admin().indices().prepareUpdateSettings(INDEX_NAME)
                     .setSettings(ImmutableSettings.builder().put("ordinal_mapping_type", ordinalMappingType))
                     .get();
-            client.admin().indices().prepareOpen("test").get();
+            client.admin().indices().prepareOpen(INDEX_NAME).get();
             ClusterHealthResponse clusterHealthResponse = client.admin().cluster().prepareHealth().setWaitForGreenStatus().setTimeout("10m").execute().actionGet();
             if (clusterHealthResponse.isTimedOut()) {
                 System.err.println("--> Timed out waiting for cluster health");
