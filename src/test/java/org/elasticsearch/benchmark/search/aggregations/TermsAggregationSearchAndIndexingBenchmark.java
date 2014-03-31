@@ -30,6 +30,7 @@ import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.search.SearchType;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.client.Requests;
+import org.elasticsearch.common.jna.Natives;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.SizeValue;
@@ -62,7 +63,7 @@ public class TermsAggregationSearchAndIndexingBenchmark {
     static String typeName = "type1";
     static Random random = new Random();
 
-    static long COUNT = SizeValue.parseSizeValue("1m").singles();
+    static long COUNT = SizeValue.parseSizeValue("2m").singles();
     static int BATCH = 1000;
     static int NUMBER_OF_TERMS = (int) SizeValue.parseSizeValue("100k").singles();
     static int NUMBER_OF_MULTI_VALUE_TERMS = 10;
@@ -71,6 +72,7 @@ public class TermsAggregationSearchAndIndexingBenchmark {
     static InternalNode[] nodes;
 
     public static void main(String[] args) throws Exception {
+        Natives.tryMlockall();
         Settings settings = settingsBuilder()
                 .put("refresh_interval", "-1")
                 .put(SETTING_NUMBER_OF_SHARDS, 1)
@@ -312,7 +314,6 @@ public class TermsAggregationSearchAndIndexingBenchmark {
                     }
                     totalQueryTime += searchResponse.getTookInMillis();
                     numExecutedQueries++;
-                    Thread.sleep(500);
                 } catch (Throwable e) {
                     e.printStackTrace();
                 }

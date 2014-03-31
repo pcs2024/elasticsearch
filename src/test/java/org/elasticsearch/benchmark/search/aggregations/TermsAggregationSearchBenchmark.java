@@ -32,6 +32,7 @@ import org.elasticsearch.action.search.SearchType;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.client.Requests;
 import org.elasticsearch.common.StopWatch;
+import org.elasticsearch.common.jna.Natives;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.SizeValue;
@@ -61,11 +62,11 @@ import static org.elasticsearch.search.facet.FacetBuilders.termsStatsFacet;
  */
 public class TermsAggregationSearchBenchmark {
 
-    static long COUNT = SizeValue.parseSizeValue("10m").singles();
+    static long COUNT = SizeValue.parseSizeValue("2m").singles();
     static int BATCH = 1000;
     static int QUERY_WARMUP = 10;
     static int QUERY_COUNT = 100;
-    static int NUMBER_OF_TERMS = (int) SizeValue.parseSizeValue("200").singles();
+    static int NUMBER_OF_TERMS = (int) SizeValue.parseSizeValue("100k").singles();
     static int NUMBER_OF_MULTI_VALUE_TERMS = 10;
     static int STRING_TERM_SIZE = 5;
 
@@ -100,6 +101,7 @@ public class TermsAggregationSearchBenchmark {
     }
 
     public static void main(String[] args) throws Exception {
+        Natives.tryMlockall();
         Random random = new Random();
 
         Settings settings = settingsBuilder()
@@ -312,12 +314,12 @@ public class TermsAggregationSearchBenchmark {
         }
     }
 
-    static class StatsResult {
+    public static class StatsResult {
         final String name;
         final long took;
         final ByteSizeValue fieldDataMemoryUsed;
 
-        StatsResult(String name, long took, ByteSizeValue fieldDataMemoryUsed) {
+        public StatsResult(String name, long took, ByteSizeValue fieldDataMemoryUsed) {
             this.name = name;
             this.took = took;
             this.fieldDataMemoryUsed = fieldDataMemoryUsed;
@@ -328,6 +330,7 @@ public class TermsAggregationSearchBenchmark {
         long totalQueryTime;// LM VALUE
 
         client.admin().indices().prepareClearCache().setFieldDataCache(true).execute().actionGet();
+        System.gc();
 
         System.out.println("--> Warmup (" + name + ")...");
         // run just the child query, warm up first
@@ -377,6 +380,7 @@ public class TermsAggregationSearchBenchmark {
         long totalQueryTime;
 
         client.admin().indices().prepareClearCache().setFieldDataCache(true).execute().actionGet();
+        System.gc();
 
         System.out.println("--> Warmup (" + name + ")...");
         // run just the child query, warm up first

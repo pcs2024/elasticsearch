@@ -185,6 +185,7 @@ public class GlobalOrdinalsBenchmark {
         long totalQueryTime;// LM VALUE
 
         client.admin().indices().prepareClearCache().setFieldDataCache(true).execute().actionGet();
+        System.gc();
 
         System.out.println("--> Warmup (" + name + ")...");
         // run just the child query, warm up first
