@@ -25,6 +25,7 @@ import org.elasticsearch.action.admin.cluster.stats.ClusterStatsResponse;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.search.SearchType;
+import org.elasticsearch.benchmark.search.aggregations.TermsAggregationSearchBenchmark.StatsResult;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.jna.Natives;
 import org.elasticsearch.common.settings.ImmutableSettings;
@@ -40,7 +41,6 @@ import org.elasticsearch.transport.TransportModule;
 
 import java.util.*;
 
-import static org.elasticsearch.benchmark.search.aggregations.TermsAggregationSearchBenchmark.StatsResult;
 import static org.elasticsearch.cluster.metadata.IndexMetaData.SETTING_NUMBER_OF_REPLICAS;
 import static org.elasticsearch.cluster.metadata.IndexMetaData.SETTING_NUMBER_OF_SHARDS;
 import static org.elasticsearch.common.settings.ImmutableSettings.settingsBuilder;
@@ -122,7 +122,7 @@ public class GlobalOrdinalsBenchmark {
             for (int i = 0; i < COUNT; i++) {
                 Map<String, Object> fieldValues = new HashMap<>();
                 for (int fieldSuffix = 1; fieldSuffix < FIELD_LIMIT; fieldSuffix <<= 1) {
-                    fieldValues.put("field_" + fieldSuffix, sValues[i % fieldSuffix]);
+                    fieldValues.put("field_" + fieldSuffix, sValues[random.nextInt(fieldSuffix)]);
                 }
                 builder.add(
                         client.prepareIndex(INDEX_NAME, TYPE_NAME, String.valueOf(i))
